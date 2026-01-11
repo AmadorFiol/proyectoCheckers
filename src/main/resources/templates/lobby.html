@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sala de Espera - Checkers Online</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>🎮 Sala de Espera</h1>
+    </header>
+
+    <main>
+        <section class="card lobby-card">
+            <div class="room-header">
+                <h2 id="roomName">Sala de Juego</h2>
+                <div class="room-code-display">
+                    <span>Código de Sala:</span>
+                    <span id="roomCodeDisplay" class="code" th:text="${roomId}">ABC123</span>
+                    <button id="copyCode" class="btn-icon" title="Copiar código">📋</button>
+                </div>
+            </div>
+
+            <div class="players-waiting">
+                <h3>Jugadores:</h3>
+                <div id="playersContainer">
+                    <div class="player-slot empty">
+                        <div class="player-avatar">👤</div>
+                        <span>Esperando...</span>
+                    </div>
+                    <div class="player-slot empty">
+                        <div class="player-avatar">👤</div>
+                        <span>Esperando...</span>
+                    </div>
+                </div>
+            </div>
+
+            <div id="statusMessage" class="status-message">
+                Esperando al segundo jugador...
+            </div>
+
+            <div class="lobby-actions">
+                <button id="leaveRoom" class="btn btn-danger">Salir de la Sala</button>
+            </div>
+        </section>
+
+        <section class="card info-card">
+            <h3>ℹ️ Cómo Jugar</h3>
+            <ul>
+                <li>Las fichas blancas mueven primero</li>
+                <li>Solo puedes mover en diagonal</li>
+                <li>Debes capturar fichas enemigas cuando sea posible</li>
+                <li>Llega al otro extremo para coronar tu ficha</li>
+                <li>Gana capturando todas las fichas del oponente</li>
+            </ul>
+        </section>
+    </main>
+</div>
+
+<script th:src="@{/js/lib/sockjs.min.js}"></script>
+<script th:src="@{/js/lib/stomp.min.js}"></script>
+<script th:inline="javascript">
+    const roomId = /*[[${roomId}]]*/ 'ABC123';
+    const urlParams = new URLSearchParams(window.location.search);
+    const nickname = urlParams.get('nickname') || sessionStorage.getItem('nickname') || 'Jugador';
+
+    // IMPORTANTE: Guardar el nickname en sessionStorage
+    sessionStorage.setItem('nickname', nickname);
+    console.log('Lobby - Nickname guardado:', nickname);
+    console.log('Lobby - SessionStorage nickname:', sessionStorage.getItem('nickname'));
+
+    let stompClient = null;
+
+    // Conectar WebSocket
+    function connect() {
+        console.log('Intentando conectar WebSocket...');
+        console.log('RoomId:', roomId);
+        console.log('Nickname:', nickname);
+
+        const socket = new SockJS('/ws-checkers');
+        stompClient = Stomp.over(socket);
+
+        stompClient.connect({}, function(frame) {
+            console.log('Conectado: ' + frame);
+
+            // Suscribirse a actualizaciones de la sala
+            stompClient.subscribe('/topic/room/' + roomId, function(message) {
+                const response = JSON.parse(message.body);
+                handleRoomUpdate(response);
+            });
+
+            // Suscribirse a errores personales
+            stompClient.subscribe('/user/queue/errors', function(message) {
+                const error = JSON.parse(message.body);
+                alert('Error: ' + error.message);
+            });
+
+            // Unirse a la sala
+            console.log('Enviando solicitud de unión con nickname:', nickname);
+            stompClient.send('/app/room/join', {}, JSON.stringify({
+                roomId: roomId,
+                playerNickname: nickname
+            }));
+        }, function(error) {
+            console.error('Error de conexión:', error);
+            alert('Error al conectar con el servidor. Verifica que el servidor esté corriendo.');
+        });
+    }
+
+    function handleRoomUpdate(response) {
+        console.log('Actualización de sala:', response);
+
+        updatePlayersList(response);
+
+        if (response.gameStarted) {
+            document.getElementById('statusMessage').textContent = '¡La partida está comenzando!';
+            console.log('Juego iniciando, redirigiendo en 1.5 segundos...');
+            setTimeout(() => {
+                window.location.href = '/room/' + roomId + '/game';
+            }, 1500);
+        } else {
+            document.getElementById('statusMessage').textContent = response.message;
+        }
+    }
+
+    function updatePlayersList(response) {
+        // Esta función se actualizará cuando tengamos más info de los jugadores
+    }
+
+    // Copiar código de sala
+    document.getElementById('copyCode').addEventListener('click', () => {
+        const code = document.getElementById('roomCodeDisplay').textContent;
+        navigator.clipboard.writeText(code).then(() => {
+            alert('¡Código copiado al portapapeles!');
+        });
+    });
+
+    // Salir de la sala
+    document.getElementById('leaveRoom').addEventListener('click', () => {
+        if (confirm('¿Estás seguro de que quieres salir de la sala?')) {
+            if (stompClient) {
+                stompClient.disconnect();
+            }
+            window.location.href = '/';
+        }
+    });
+
+    // Conectar al cargar la página
+    connect();
+
+    // Desconectar al salir
+    window.addEventListener('beforeunload', () => {
+        if (stompClient) {
+            stompClient.disconnect();
+        }
+    });
+</script>
+</body>
+</html>

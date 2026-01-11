@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Checkers Online - Inicio</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>🎮 Checkers Online</h1>
+        <p>Juega damas con tus amigos en tiempo real</p>
+    </header>
+
+    <main>
+        <!-- Sección para crear sala -->
+        <section class="card">
+            <h2>Crear Nueva Sala</h2>
+            <form id="createRoomForm">
+                <div class="form-group">
+                    <label for="roomName">Nombre de la Sala:</label>
+                    <input type="text" id="roomName" name="roomName"
+                           placeholder="Mi Sala de Damas" required>
+                </div>
+                <div class="form-group">
+                    <label for="createNickname">Tu Apodo:</label>
+                    <input type="text" id="createNickname" name="nickname"
+                           placeholder="Jugador1" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Crear Sala</button>
+            </form>
+        </section>
+
+        <!-- Sección para unirse a sala -->
+        <section class="card">
+            <h2>Unirse a una Sala</h2>
+            <form id="joinRoomForm">
+                <div class="form-group">
+                    <label for="roomId">Código de Sala:</label>
+                    <input type="text" id="roomId" name="roomId"
+                           placeholder="ABC123" required>
+                </div>
+                <div class="form-group">
+                    <label for="joinNickname">Tu Apodo:</label>
+                    <input type="text" id="joinNickname" name="nickname"
+                           placeholder="Jugador2" required>
+                </div>
+                <button type="submit" class="btn btn-secondary">Unirse</button>
+            </form>
+        </section>
+
+        <!-- Salas disponibles -->
+        <section class="card">
+            <h2>Salas Disponibles</h2>
+            <div id="availableRooms">
+                <div th:if="${#lists.isEmpty(availableRooms)}" class="no-rooms">
+                    No hay salas disponibles. ¡Crea una nueva!
+                </div>
+                <div th:unless="${#lists.isEmpty(availableRooms)}" class="rooms-list">
+                    <div th:each="room : ${availableRooms}" class="room-item">
+                        <div class="room-info">
+                            <h3 th:text="${room.name}">Nombre de Sala</h3>
+                            <p class="room-code">Código: <span th:text="${room.id}">ABC123</span></p>
+                            <p class="room-players">
+                                Jugadores:
+                                <span th:text="${room.playerCount}">1</span>/<span th:text="${room.maxPlayers}">2</span>
+                            </p>
+                        </div>
+                        <button class="btn btn-join"
+                                th:onclick="|quickJoin('${room.id}')|">
+                            Unirse Rápido
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <button id="refreshRooms" class="btn btn-refresh">🔄 Actualizar</button>
+        </section>
+    </main>
+
+    <!-- Modal de error -->
+    <div id="errorModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h3>⚠️ Error</h3>
+            <p id="errorMessage"></p>
+        </div>
+    </div>
+</div>
+
+<!-- Cargar librerías locales -->
+<script th:src="@{/js/lib/sockjs.min.js}"></script>
+<script th:src="@{/js/lib/stomp.min.js}"></script>
+<script th:src="@{/js/websocket.js}"></script>
+
+<script>
+    // Verificar que las librerías estén cargadas
+    console.log('SockJS disponible:', typeof SockJS !== 'undefined');
+    console.log('Stomp disponible:', typeof Stomp !== 'undefined');
+
+    // Crear sala
+    document.getElementById('createRoomForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        // Verificar que las librerías estén disponibles
+        if (typeof SockJS === 'undefined' || typeof Stomp === 'undefined') {
+            showError('Error: Las librerías WebSocket no están cargadas. Por favor, recarga la página.');
+            return;
+        }
+
+        const roomName = document.getElementById('roomName').value;
+        const nickname = document.getElementById('createNickname').value;
+
+        try {
+            await createRoom(roomName, nickname);
+        } catch (error) {
+            showError('Error al crear la sala: ' + error.message);
+        }
+    });
+
+    // Unirse a sala
+    document.getElementById('joinRoomForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const roomId = document.getElementById('roomId').value.toUpperCase();
+        const nickname = document.getElementById('joinNickname').value;
+
+        // Guardar nickname en sessionStorage
+        sessionStorage.setItem('nickname', nickname);
+
+        // Redirigir al lobby
+        window.location.href = `/room/${roomId}/lobby?nickname=${encodeURIComponent(nickname)}`;
+    });
+
+    // Unirse rápido
+    function quickJoin(roomId) {
+        const nickname = prompt('Ingresa tu apodo:');
+        if (nickname) {
+            sessionStorage.setItem('nickname', nickname);
+            window.location.href = `/room/${roomId}/lobby?nickname=${encodeURIComponent(nickname)}`;
+        }
+    }
+
+    // Actualizar lista de salas
+    document.getElementById('refreshRooms').addEventListener('click', async () => {
+        try {
+            const response = await fetch('/api/rooms');
+            const rooms = await response.json();
+            updateRoomsList(rooms);
+        } catch (error) {
+            showError('Error al actualizar salas: ' + error.message);
+        }
+    });
+
+    function updateRoomsList(rooms) {
+        const container = document.getElementById('availableRooms');
+
+        if (rooms.length === 0) {
+            container.innerHTML = '<div class="no-rooms">No hay salas disponibles. ¡Crea una nueva!</div>';
+            return;
+        }
+
+        container.innerHTML = '<div class="rooms-list">' + rooms.map(room => `
+            <div class="room-item">
+                <div class="room-info">
+                    <h3>${room.roomName}</h3>
+                    <p class="room-code">Código: <span>${room.roomId}</span></p>
+                    <p class="room-players">Jugadores: ${room.currentPlayers}/${room.maxPlayers}</p>
+                </div>
+                <button class="btn btn-join" onclick="quickJoin('${room.roomId}')">
+                    Unirse Rápido
+                </button>
+            </div>
+        `).join('') + '</div>';
+    }
+
+    // Modal de error
+    function showError(message) {
+        document.getElementById('errorMessage').textContent = message;
+        document.getElementById('errorModal').style.display = 'block';
+    }
+
+    document.querySelector('.close').addEventListener('click', () => {
+        document.getElementById('errorModal').style.display = 'none';
+    });
+
+    window.addEventListener('click', (e) => {
+        const modal = document.getElementById('errorModal');
+        if (e.target === modal) {
+            modal.style.display = 'none';
+        }
+    });
+
+    // Verificar parámetros de error en URL
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('error')) {
+        const error = urlParams.get('error');
+        if (error === 'room_not_found') {
+            showError('La sala no existe o ya no está disponible.');
+        }
+    }
+</script>
+</body>
+</html>

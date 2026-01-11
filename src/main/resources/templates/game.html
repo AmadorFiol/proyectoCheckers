@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Juego - Checkers Online</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body>
+<!-- Overlay de espera -->
+<div id="waitingOverlay" class="waiting-overlay">
+    <div class="waiting-content">
+        <h2>⏳ Esperando al segundo jugador...</h2>
+        <p>Código de sala: <strong id="waitingRoomCode" th:text="${roomId}">ABC123</strong></p>
+        <button id="copyCodeWaiting" class="btn btn-primary">📋 Copiar código</button>
+        <br><br>
+        <button id="leaveWaiting" class="btn btn-danger">Salir</button>
+    </div>
+</div>
+
+<div class="container game-container">
+    <header class="game-header">
+        <div class="player-info" id="player1Info">
+            <div class="player-avatar">⚪</div>
+            <div>
+                <h3 id="whitePlayerName">Jugador 1</h3>
+                <p class="player-color">Blancas</p>
+            </div>
+        </div>
+
+        <div class="game-status">
+            <h2 id="gameStatus">Esperando...</h2>
+            <p id="turnIndicator">-</p>
+        </div>
+
+        <div class="player-info" id="player2Info">
+            <div class="player-avatar">⚫</div>
+            <div>
+                <h3 id="blackPlayerName">Jugador 2</h3>
+                <p class="player-color">Negras</p>
+            </div>
+        </div>
+    </header>
+
+    <main class="game-main">
+        <div class="board-container">
+            <canvas id="gameBoard" width="640" height="640"></canvas>
+        </div>
+
+        <aside class="game-sidebar">
+            <div class="card">
+                <h3>📊 Estado del Juego</h3>
+                <div class="game-info">
+                    <p>Código de Sala: <strong th:text="${roomId}">ABC123</strong></p>
+                    <p id="capturedWhite">Capturadas ⚪: <strong>0</strong></p>
+                    <p id="capturedBlack">Capturadas ⚫: <strong>0</strong></p>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>ℹ️ Controles</h3>
+                <ul class="controls-list">
+                    <li>Click en tu ficha para seleccionarla</li>
+                    <li>Click en casilla válida para mover</li>
+                    <li>Las capturas son obligatorias</li>
+                </ul>
+            </div>
+
+            <button id="leaveGame" class="btn btn-danger btn-full">
+                Abandonar Partida
+            </button>
+        </aside>
+    </main>
+
+    <!-- Modal de victoria -->
+    <div id="winModal" class="modal">
+        <div class="modal-content win-modal">
+            <h2 id="winTitle">🎉 ¡Victoria!</h2>
+            <p id="winMessage">¡Has ganado la partida!</p>
+            <div class="modal-actions">
+                <button id="backToHome" class="btn btn-primary">Volver al Inicio</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script th:src="@{/js/lib/sockjs.min.js}"></script>
+<script th:src="@{/js/lib/stomp.min.js}"></script>
+<script th:src="@{/js/game.js}"></script>
+<script th:inline="javascript">
+    const roomId = /*[[${roomId}]]*/ 'ABC123';
+
+    // Obtener nickname de la URL o sessionStorage
+    const urlParams = new URLSearchParams(window.location.search);
+    let nickname = urlParams.get('nickname');
+
+    if (!nickname) {
+        nickname = sessionStorage.getItem('nickname');
+    }
+
+    if (!nickname) {
+        nickname = 'Jugador';
+    }
+
+    // Guardar en sessionStorage
+    sessionStorage.setItem('nickname', nickname);
+
+    console.log('Nickname para esta sesión:', nickname);
+
+    // Botones del overlay de espera
+    document.getElementById('copyCodeWaiting').addEventListener('click', () => {
+        const code = document.getElementById('waitingRoomCode').textContent;
+        navigator.clipboard.writeText(code).then(() => {
+            alert('¡Código copiado al portapapeles!');
+        });
+    });
+
+    document.getElementById('leaveWaiting').addEventListener('click', () => {
+        window.location.href = '/';
+    });
+
+    // Inicializar
+    window.addEventListener('load', () => {
+        console.log('Inicializando juego...');
+        initGame(roomId, nickname);
+    });
+</script>
+</body>
+</html>
